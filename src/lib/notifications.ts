@@ -7,11 +7,18 @@ export function shouldNotifyNow(now: Date, notifyHour: number): boolean {
 export function msUntilNextNotify(now: Date, notifyHour: number): number {
   const target = new Date(now);
   target.setHours(notifyHour, 0, 0, 0);
-  return target.getTime() - now.getTime();
+  let delay = target.getTime() - now.getTime();
+  if (delay <= 0) {
+    // 通知時刻を過ぎていれば翌日の同時刻まで待つ
+    target.setDate(target.getDate() + 1);
+    delay = target.getTime() - now.getTime();
+  }
+  return delay;
 }
 
 export interface NotifyDeps {
   requestPermission: () => Promise<NotificationPermissionLike>;
+  permission: () => NotificationPermissionLike;
   showNotification: (title: string, body: string) => void;
   hasPendingHabits: () => boolean;
 }
@@ -26,6 +33,7 @@ export function enableNotifications(deps: NotifyDeps): Promise<NotificationPermi
 export function notifyIfPending(deps: NotifyDeps, now: Date, notifyHour: number): boolean {
   if (!shouldNotifyNow(now, notifyHour)) return false;
   if (!deps.hasPendingHabits()) return false;
+  if (deps.permission() !== "granted") return false;
   deps.showNotification("習慣トラッカー", "今日未完了の習慣があります");
   return true;
 }
