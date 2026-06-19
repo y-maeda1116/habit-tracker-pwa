@@ -1,12 +1,2 @@
-import { defineConfig } from 'vitest/config';
-
-export default defineConfig({
-  test: {
-    include: ['src/**/*.test.ts'],
-    coverage: {
-      provider: 'v8',
-      include: ['src/**/*.ts'],
-      exclude: ['src/**/*.test.ts', 'node_modules/'],
-    },
-  },
-});
+// Template remnant — to be deleted. Delegates to vite.config.ts (which holds the test config).
+export { default } from "./vite.config.js";
