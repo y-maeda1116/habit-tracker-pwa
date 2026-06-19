@@ -17,7 +17,11 @@ export function loadJSON<T>(storage: StorageLike, key: string, defaultValue: T):
 }
 
 export function saveJSON<T>(storage: StorageLike, key: string, value: T): void {
-  storage.setItem(key, JSON.stringify(value));
+  try {
+    storage.setItem(key, JSON.stringify(value));
+  } catch {
+    // storage quota exceeded or unavailable — fail silently to avoid crash
+  }
 }
 
 export function browserStorage(): StorageLike {

@@ -6,9 +6,18 @@ import { todayISO } from "./lib/dates.js";
 import { addHabit, deleteHabit, toggleRecord } from "./lib/habits.js";
 import { applyTheme, resolveTheme } from "./ui/theme.js";
 import { renderToday, renderMonth, renderSettings } from "./ui/render.js";
-import { notifyIfPending, enableNotifications, msUntilNextNotify } from "./lib/notifications.js";
+import {
+  notifyIfPending,
+  enableNotifications,
+  msUntilNextNotify,
+  type NotificationPermissionLike,
+} from "./lib/notifications.js";
 
 type Tab = "today" | "month" | "settings";
+
+function notificationPermission(): NotificationPermissionLike {
+  return typeof Notification !== "undefined" ? Notification.permission : "denied";
+}
 
 function loadState(): AppState {
   const storage = browserStorage();
@@ -120,6 +129,7 @@ export function main(): void {
           onRequestNotify: () => {
             void enableNotifications({
               requestPermission: () => Notification.requestPermission(),
+              permission: () => notificationPermission(),
               showNotification: () => undefined,
               hasPendingHabits: () => false,
             }).then(() => rerender());
@@ -146,6 +156,7 @@ function setupNotifications(notifyHour: number): void {
     if (!reg) return;
     const deps = {
       requestPermission: () => Notification.requestPermission(),
+      permission: () => notificationPermission(),
       showNotification: (title: string, body: string) => {
         reg.showNotification(title, { body });
       },
