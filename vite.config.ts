@@ -5,7 +5,7 @@ export default defineConfig({
   base: "/habit-tracker-pwa/",
   build: { outDir: "dist" },
   test: {
-    include: ["src/**/*.test.ts"],
+    include: ["src/lib/**/*.test.ts"],
     coverage: {
       provider: "v8",
       include: ["src/lib/**/*.ts"],
