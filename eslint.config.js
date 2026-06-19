@@ -11,7 +11,8 @@ export default [
   },
   {
     rules: {
-      'security/detect-object-injection': 'warn',
+      // ブラウザPWA: LocalStorage 自前データのマップアクセスは安全とみなし誤報を抑制
+      'security/detect-object-injection': 'off',
       'security/detect-non-literal-fs-filename': 'warn',
       'security/detect-unsafe-regex': 'error',
       'security/detect-buffer-noassert': 'error',
