@@ -174,3 +174,24 @@ body {
   background: var(--done);
   color: #062;
 }
+.install-hint {
+  margin: 12px 0;
+  padding: 12px;
+  background: var(--surface);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.install-btn {
+  display: block;
+  width: 100%;
+  margin: 12px 0;
+  padding: 12px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 8px;
+  font-size: 15px;
+  cursor: pointer;
+}

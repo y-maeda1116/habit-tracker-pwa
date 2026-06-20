@@ -12,6 +12,7 @@ import {
   msUntilNextNotify,
   type NotificationPermissionLike,
 } from "./lib/notifications.js";
+import { isIOS, type BeforeInstallPromptEvent } from "./lib/pwa-install.js";
 
 type Tab = "today" | "month" | "settings";
 
@@ -44,6 +45,10 @@ export function main(): void {
     month: now0.getMonth() + 1,
     selectedId: state.habits[0]?.id ?? null,
   };
+  let deferredPrompt: BeforeInstallPromptEvent | null = null;
+  let installAvailable = false;
+  let installed = false;
+  const ios = isIOS(navigator.userAgent);
 
   const app = document.getElementById("app")!;
 
@@ -116,30 +121,65 @@ export function main(): void {
       );
     } else {
       app.appendChild(
-        renderSettings(state, Notification?.permission ?? "unsupported", {
-          onChangeHour: (hour) => {
-            state = { ...state, settings: { ...state.settings, notifyHour: hour } };
-            persist(state);
-          },
-          onChangeTheme: (theme) => {
-            state = { ...state, settings: { ...state.settings, theme } };
-            persist(state);
-            rerender();
-          },
-          onRequestNotify: () => {
-            void enableNotifications({
-              requestPermission: () => Notification.requestPermission(),
-              permission: () => notificationPermission(),
-              showNotification: () => undefined,
-              hasPendingHabits: () => false,
-            }).then(() => rerender());
-          },
-        })
+        renderSettings(
+          state,
+          Notification?.permission ?? "unsupported",
+          { isIOS: ios, installAvailable, installed },
+          {
+            onChangeHour: (hour) => {
+              state = { ...state, settings: { ...state.settings, notifyHour: hour } };
+              persist(state);
+            },
+            onChangeTheme: (theme) => {
+              state = { ...state, settings: { ...state.settings, theme } };
+              persist(state);
+              rerender();
+            },
+            onRequestNotify: () => {
+              void enableNotifications({
+                requestPermission: () => Notification.requestPermission(),
+                permission: () => notificationPermission(),
+                showNotification: () => undefined,
+                hasPendingHabits: () => false,
+              }).then(() => rerender());
+            },
+            onInstall: () => {
+              const promptEvent = deferredPrompt;
+              if (!promptEvent) return;
+              void promptEvent.prompt().then(async () => {
+                const choice = await promptEvent.userChoice;
+                if (choice.outcome === "accepted") {
+                  installed = true;
+                  installAvailable = false;
+                }
+                deferredPrompt = null;
+                rerender();
+              });
+            },
+          }
+        )
       );
     }
   }
 
+  function setupInstallPrompt(): void {
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      deferredPrompt = e as BeforeInstallPromptEvent;
+      installAvailable = true;
+      installed = false;
+      rerender();
+    });
+    window.addEventListener("appinstalled", () => {
+      installed = true;
+      installAvailable = false;
+      deferredPrompt = null;
+      rerender();
+    });
+  }
+
   rerender();
+  setupInstallPrompt();
   void setupNotifications(state.settings.notifyHour);
 }
 

@@ -162,15 +162,23 @@ export function renderMonth(state: AppState, ctx: MonthCtx, handlers: MonthHandl
   return root;
 }
 
+export interface InstallUiState {
+  isIOS: boolean;
+  installAvailable: boolean; // beforeinstallprompt 発火済みでプロンプト表示可能
+  installed: boolean; // appinstalled 発火済み（既にインストール）
+}
+
 export interface SettingsHandlers {
   onChangeHour: (hour: number) => void;
   onChangeTheme: (theme: "dark" | "light" | "system") => void;
   onRequestNotify: () => void;
+  onInstall: () => void;
 }
 
 export function renderSettings(
   state: AppState,
   permission: NotificationPermission | "unsupported",
+  install: InstallUiState,
   handlers: SettingsHandlers
 ): HTMLElement {
   const root = document.createElement("section");
@@ -216,6 +224,27 @@ export function renderSettings(
   req.addEventListener("click", () => handlers.onRequestNotify());
   notify.append(status, req);
   root.appendChild(notify);
+
+  // --- アプリインストール ---
+  // 既にインストール済みなら何も表示しない。
+  // iOS は beforeinstallprompt 非対応のため案内のみ。
+  // それ以外は beforeinstallprompt 発火時のみボタンを表示。
+  if (!install.installed) {
+    if (install.isIOS) {
+      const hint = document.createElement("div");
+      hint.className = "install-hint";
+      hint.textContent =
+        "iOSはアプリのインストールに対応していません。Safariの共有ボタン →「ホーム画面に追加」から追加できます。";
+      root.appendChild(hint);
+    } else if (install.installAvailable) {
+      const installBtn = document.createElement("button");
+      installBtn.type = "button";
+      installBtn.className = "install-btn";
+      installBtn.textContent = "アプリをインストール";
+      installBtn.addEventListener("click", () => handlers.onInstall());
+      root.appendChild(installBtn);
+    }
+  }
 
   return root;
 }
