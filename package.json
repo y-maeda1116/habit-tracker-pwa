@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "自分専用の習慣化PWA（LocalStorage・GitHub Pages）",
   "type": "module",
-  "engines": { "node": ">=20.0.0" },
+  "engines": { "node": ">=24.0.0" },
   "license": "MIT",
   "scripts": {
     "dev": "vite",
