@@ -1,4 +1,9 @@
-export type NotificationPermissionLike = "default" | "granted" | "denied";
+export type NotificationPermissionLike = "default" | "granted" | "denied" | "unsupported";
+
+/** 現在の通知権限を取得する。Notification 自体が無い環境では "unsupported" を返す。 */
+export function currentPermission(): NotificationPermissionLike {
+  return typeof Notification !== "undefined" ? Notification.permission : "unsupported";
+}
 
 export function shouldNotifyNow(now: Date, notifyHour: number): boolean {
   return now.getHours() >= notifyHour;
@@ -25,7 +30,7 @@ export interface NotifyDeps {
 
 export function enableNotifications(deps: NotifyDeps): Promise<NotificationPermissionLike> {
   if (!("Notification" in globalThis)) {
-    return Promise.resolve("denied" as NotificationPermissionLike);
+    return Promise.resolve("unsupported");
   }
   return deps.requestPermission();
 }

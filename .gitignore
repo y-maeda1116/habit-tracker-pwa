@@ -28,3 +28,6 @@ desktop.ini
 
 # Coverage
 coverage/
+
+# Serena MCP
+.serena/

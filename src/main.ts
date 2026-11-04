@@ -5,20 +5,28 @@ import { STORAGE_KEYS, loadJSON, saveJSON, browserStorage } from "./lib/storage.
 import { todayISO } from "./lib/dates.js";
 import { addHabit, deleteHabit, toggleRecord } from "./lib/habits.js";
 import { applyTheme, resolveTheme } from "./ui/theme.js";
-import { renderToday, renderMonth, renderSettings } from "./ui/render.js";
+import { renderToday, type TodayHandlers } from "./ui/todayScreen.js";
+import { renderMonth, type MonthCtx, type MonthHandlers } from "./ui/monthScreen.js";
+import { renderSettings, type InstallUiState, type SettingsHandlers } from "./ui/settingsScreen.js";
 import {
   notifyIfPending,
   enableNotifications,
   msUntilNextNotify,
-  type NotificationPermissionLike,
+  currentPermission,
 } from "./lib/notifications.js";
 import { isIOS, type BeforeInstallPromptEvent } from "./lib/pwa-install.js";
 
 type Tab = "today" | "month" | "settings";
 
-function notificationPermission(): NotificationPermissionLike {
-  return typeof Notification !== "undefined" ? Notification.permission : "denied";
-}
+// --- モジュールレベルのアプリ状態 ---
+// イベントハンドラを再描画のたびに再生成しないため、状態はモジュールスコープに置く
+let state: AppState;
+let tab: Tab = "today";
+let monthCtx: MonthCtx;
+let deferredPrompt: BeforeInstallPromptEvent | null = null;
+let installAvailable = false;
+let installed = false;
+const ios = typeof navigator !== "undefined" && isIOS(navigator.userAgent);
 
 function loadState(): AppState {
   const storage = browserStorage();
@@ -36,151 +44,129 @@ function persist(state: AppState): void {
   saveJSON(storage, STORAGE_KEYS.settings, state.settings);
 }
 
-export function main(): void {
-  let state = loadState();
-  let tab: Tab = "today";
-  const now0 = new Date();
-  let monthCtx = {
-    year: now0.getFullYear(),
-    month: now0.getMonth() + 1,
-    selectedId: state.habits[0]?.id ?? null,
-  };
-  let deferredPrompt: BeforeInstallPromptEvent | null = null;
-  let installAvailable = false;
-  let installed = false;
-  const ios = isIOS(navigator.userAgent);
+const todayHandlers: TodayHandlers = {
+  onToggle: (id) => {
+    state = { ...state, records: toggleRecord(state.records, id, todayISO()) };
+    persist(state);
+    rerender();
+  },
+  onAdd: (title) => {
+    state = {
+      ...state,
+      habits: addHabit(state.habits, title, () => crypto.randomUUID()),
+    };
+    persist(state);
+    rerender();
+  },
+  onDelete: (id) => {
+    const r = deleteHabit(state.habits, state.records, id);
+    state = { ...state, ...r };
+    persist(state);
+    rerender();
+  },
+};
 
-  const app = document.getElementById("app")!;
-
-  function rerender(): void {
-    applyTheme(resolveTheme(state.settings.theme));
-    app.replaceChildren();
-
-    const nav = document.createElement("nav");
-    nav.className = "tabs";
-    const tabs: Tab[] = ["today", "month", "settings"];
-    for (const t of tabs) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = `tab${t === tab ? " is-active" : ""}`;
-      b.textContent = t === "today" ? "今日" : t === "month" ? "月間" : "設定";
-      b.addEventListener("click", () => {
-        tab = t;
-        rerender();
-      });
-      nav.appendChild(b);
+const monthHandlers: MonthHandlers = {
+  onSelectHabit: (id) => {
+    monthCtx = { ...monthCtx, selectedId: id };
+    rerender();
+  },
+  onChangeMonth: (delta) => {
+    let m = monthCtx.month + delta;
+    let y = monthCtx.year;
+    if (m < 1) {
+      m = 12;
+      y--;
     }
-    app.appendChild(nav);
-
-    if (tab === "today") {
-      app.appendChild(
-        renderToday(state, {
-          onToggle: (id) => {
-            state = { ...state, records: toggleRecord(state.records, id, todayISO()) };
-            persist(state);
-            rerender();
-          },
-          onAdd: (title) => {
-            state = {
-              ...state,
-              habits: addHabit(state.habits, title, () => crypto.randomUUID()),
-            };
-            persist(state);
-            rerender();
-          },
-          onDelete: (id) => {
-            const r = deleteHabit(state.habits, state.records, id);
-            state = { ...state, ...r };
-            persist(state);
-            rerender();
-          },
-        })
-      );
-    } else if (tab === "month") {
-      app.appendChild(
-        renderMonth(state, monthCtx, {
-          onSelectHabit: (id) => {
-            monthCtx = { ...monthCtx, selectedId: id };
-            rerender();
-          },
-          onChangeMonth: (delta) => {
-            let m = monthCtx.month + delta;
-            let y = monthCtx.year;
-            if (m < 1) {
-              m = 12;
-              y--;
-            }
-            if (m > 12) {
-              m = 1;
-              y++;
-            }
-            monthCtx = { ...monthCtx, year: y, month: m };
-            rerender();
-          },
-        })
-      );
-    } else {
-      app.appendChild(
-        renderSettings(
-          state,
-          Notification?.permission ?? "unsupported",
-          { isIOS: ios, installAvailable, installed },
-          {
-            onChangeHour: (hour) => {
-              state = { ...state, settings: { ...state.settings, notifyHour: hour } };
-              persist(state);
-            },
-            onChangeTheme: (theme) => {
-              state = { ...state, settings: { ...state.settings, theme } };
-              persist(state);
-              rerender();
-            },
-            onRequestNotify: () => {
-              void enableNotifications({
-                requestPermission: () => Notification.requestPermission(),
-                permission: () => notificationPermission(),
-                showNotification: () => undefined,
-                hasPendingHabits: () => false,
-              }).then(() => rerender());
-            },
-            onInstall: () => {
-              const promptEvent = deferredPrompt;
-              if (!promptEvent) return;
-              void promptEvent.prompt().then(async () => {
-                const choice = await promptEvent.userChoice;
-                if (choice.outcome === "accepted") {
-                  installed = true;
-                  installAvailable = false;
-                }
-                deferredPrompt = null;
-                rerender();
-              });
-            },
-          }
-        )
-      );
+    if (m > 12) {
+      m = 1;
+      y++;
     }
-  }
+    monthCtx = { ...monthCtx, year: y, month: m };
+    rerender();
+  },
+};
 
-  function setupInstallPrompt(): void {
-    window.addEventListener("beforeinstallprompt", (e) => {
-      e.preventDefault();
-      deferredPrompt = e as BeforeInstallPromptEvent;
-      installAvailable = true;
-      installed = false;
-      rerender();
-    });
-    window.addEventListener("appinstalled", () => {
-      installed = true;
-      installAvailable = false;
+const settingsHandlers: SettingsHandlers = {
+  onChangeHour: (hour) => {
+    state = { ...state, settings: { ...state.settings, notifyHour: hour } };
+    persist(state);
+  },
+  onChangeTheme: (theme) => {
+    state = { ...state, settings: { ...state.settings, theme } };
+    persist(state);
+    rerender();
+  },
+  onRequestNotify: () => {
+    void enableNotifications({
+      requestPermission: () => Notification.requestPermission(),
+      permission: () => currentPermission(),
+      showNotification: () => undefined,
+      hasPendingHabits: () => false,
+    }).then(() => rerender());
+  },
+  onInstall: () => {
+    const promptEvent = deferredPrompt;
+    if (!promptEvent) return;
+    void promptEvent.prompt().then(async () => {
+      const choice = await promptEvent.userChoice;
+      if (choice.outcome === "accepted") {
+        installed = true;
+        installAvailable = false;
+      }
       deferredPrompt = null;
       rerender();
     });
-  }
+  },
+};
 
+function switchTab(t: Tab): void {
+  tab = t;
   rerender();
-  setupInstallPrompt();
-  void setupNotifications(state.settings.notifyHour);
+}
+
+function rerender(): void {
+  applyTheme(resolveTheme(state.settings.theme));
+  const app = document.getElementById("app")!;
+  app.replaceChildren();
+
+  const nav = document.createElement("nav");
+  nav.className = "tabs";
+  const tabs: Tab[] = ["today", "month", "settings"];
+  for (const t of tabs) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `tab${t === tab ? " is-active" : ""}`;
+    b.textContent = t === "today" ? "今日" : t === "month" ? "月間" : "設定";
+    b.addEventListener("click", () => switchTab(t));
+    nav.appendChild(b);
+  }
+  app.appendChild(nav);
+
+  if (tab === "today") {
+    app.appendChild(renderToday(state, todayHandlers));
+  } else if (tab === "month") {
+    app.appendChild(renderMonth(state, monthCtx, monthHandlers));
+  } else {
+    const installUi: InstallUiState = { isIOS: ios, installAvailable, installed };
+    app.appendChild(renderSettings(state, currentPermission(), installUi, settingsHandlers));
+  }
+}
+
+function setupInstallPrompt(): void {
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredPrompt = e as BeforeInstallPromptEvent;
+    installAvailable = true;
+    installed = false;
+    rerender();
+  });
+  window.addEventListener("appinstalled", () => {
+    installed = true;
+    installAvailable = false;
+    deferredPrompt = null;
+    rerender();
+  });
 }
 
 function hasPendingHabitsToday(): boolean {
@@ -196,7 +182,7 @@ function setupNotifications(notifyHour: number): void {
     if (!reg) return;
     const deps = {
       requestPermission: () => Notification.requestPermission(),
-      permission: () => notificationPermission(),
+      permission: () => currentPermission(),
       showNotification: (title: string, body: string) => {
         reg.showNotification(title, { body });
       },
@@ -210,6 +196,20 @@ function setupNotifications(notifyHour: number): void {
       globalThis.setTimeout(() => notifyIfPending(deps, new Date(), notifyHour), delay);
     }
   });
+}
+
+export function main(): void {
+  state = loadState();
+  const now0 = new Date();
+  monthCtx = {
+    year: now0.getFullYear(),
+    month: now0.getMonth() + 1,
+    selectedId: state.habits[0]?.id ?? null,
+  };
+
+  rerender();
+  setupInstallPrompt();
+  void setupNotifications(state.settings.notifyHour);
 }
 
 main();

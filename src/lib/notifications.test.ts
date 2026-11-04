@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { shouldNotifyNow, msUntilNextNotify, notifyIfPending } from "./notifications.js";
+import {
+  shouldNotifyNow,
+  msUntilNextNotify,
+  notifyIfPending,
+  currentPermission,
+  enableNotifications,
+} from "./notifications.js";
 
 describe("shouldNotifyNow", () => {
   it("現在時刻が通知時刻以降なら true", () => {
@@ -58,5 +64,37 @@ describe("notifyIfPending", () => {
       21
     );
     expect(called).toBe(false);
+  });
+  it("通知非対応環境では通知しない", () => {
+    let called = false;
+    notifyIfPending(
+      { ...baseDeps, permission: () => "unsupported", showNotification: () => (called = true) },
+      new Date(2026, 5, 19, 22, 0),
+      21
+    );
+    expect(called).toBe(false);
+  });
+});
+
+describe("currentPermission", () => {
+  it("Notification が無い環境では unsupported を返す", () => {
+    expect(currentPermission()).toBe("unsupported");
+  });
+});
+
+describe("enableNotifications", () => {
+  it("Notification が無い環境では unsupported を返し権限要求を呼ばない", async () => {
+    let requested = false;
+    const result = await enableNotifications({
+      requestPermission: async () => {
+        requested = true;
+        return "granted";
+      },
+      permission: () => "unsupported",
+      showNotification: () => undefined,
+      hasPendingHabits: () => false,
+    });
+    expect(result).toBe("unsupported");
+    expect(requested).toBe(false);
   });
 });
