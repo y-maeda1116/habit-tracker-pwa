@@ -13,6 +13,7 @@ import {
   enableNotifications,
   msUntilNextNotify,
   currentPermission,
+  type NotifyDeps,
 } from "./lib/notifications.js";
 import { isIOS, type BeforeInstallPromptEvent } from "./lib/pwa-install.js";
 
@@ -190,12 +191,19 @@ function setupNotifications(notifyHour: number): void {
     };
     const now = new Date();
     notifyIfPending(deps, now, notifyHour);
-
-    const delay = msUntilNextNotify(now, notifyHour);
-    if (delay > 0) {
-      globalThis.setTimeout(() => notifyIfPending(deps, new Date(), notifyHour), delay);
-    }
+    scheduleNextNotify(deps, notifyHour);
   });
+}
+
+// タイマーの早発火で通知時刻直前に起きても確実に当日分を通知できるよう、時刻の少し後に起動する
+const NOTIFY_CHECK_OFFSET_MS = 60_000;
+
+function scheduleNextNotify(deps: NotifyDeps, notifyHour: number): void {
+  const delay = msUntilNextNotify(new Date(), notifyHour) + NOTIFY_CHECK_OFFSET_MS;
+  globalThis.setTimeout(() => {
+    notifyIfPending(deps, new Date(), notifyHour);
+    scheduleNextNotify(deps, notifyHour);
+  }, delay);
 }
 
 export function main(): void {
