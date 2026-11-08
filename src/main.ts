@@ -126,6 +126,14 @@ function switchTab(t: Tab): void {
   rerender();
 }
 
+// タブ切替はイベント委譲で処理し、再描画のたびのリスナー再登録を不要にする
+function setupTabNavigation(): void {
+  document.getElementById("app")!.addEventListener("click", (e) => {
+    const target = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-tab]") : null;
+    if (target) switchTab(target.dataset.tab as Tab);
+  });
+}
+
 function rerender(): void {
   applyTheme(resolveTheme(state.settings.theme));
   const app = document.getElementById("app")!;
@@ -138,8 +146,8 @@ function rerender(): void {
     const b = document.createElement("button");
     b.type = "button";
     b.className = `tab${t === tab ? " is-active" : ""}`;
+    b.dataset.tab = t;
     b.textContent = t === "today" ? "今日" : t === "month" ? "月間" : "設定";
-    b.addEventListener("click", () => switchTab(t));
     nav.appendChild(b);
   }
   app.appendChild(nav);
@@ -215,6 +223,7 @@ export function main(): void {
     selectedId: state.habits[0]?.id ?? null,
   };
 
+  setupTabNavigation();
   rerender();
   setupInstallPrompt();
   void setupNotifications(state.settings.notifyHour);
